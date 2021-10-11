@@ -1,3 +1,4 @@
+/* This is an experiment and riddles with bugs! */
 package lib
 
 import (

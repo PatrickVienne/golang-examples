@@ -7,8 +7,10 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Users struct which contains
@@ -43,6 +45,8 @@ type mytype []employee
 
 func main() {
 	var filename string = os.Args[1]
+	defer duration(track("Parsin File: " + filename))
+
 	if filename == "users.json" {
 		ParseUsers(filename)
 	} else if strings.HasSuffix(filename, "jsonl") {
@@ -58,11 +62,13 @@ func ParseUsers(filename string) {
 	// read our opened jsonFile as a byte array.
 	// Open our jsonFile
 	jsonFile, err := os.Open(filename)
+
 	// if we os.Open returns an error then handle it
 	if err != nil {
 		fmt.Println(err)
 	}
 	fmt.Println("Successfully Opened " + filename)
+
 	// defer the closing of our jsonFile so that we can parse it later on
 	defer jsonFile.Close()
 
@@ -87,6 +93,7 @@ func ParseUsers(filename string) {
 }
 
 func ParseJsonFile(filename string) {
+	defer duration(track("Parsin File: " + filename))
 	fmt.Println("Parsin File: " + filename)
 
 	var emp employee
@@ -105,13 +112,23 @@ func ParseJsonFile(filename string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(data)
+
+	// Print Memory Usage after reading employees
+	PrintMemUsage()
+
+	// Clear our memory and print usage, unless the GC has run 'Alloc' will remain the same
+	data = nil
+	PrintMemUsage()
+
+	// Force GC to clear up, should see a memory drop
+	runtime.GC()
+	PrintMemUsage()
 
 	fmt.Printf("emp Struct: %#v\n", emp)
-
 }
 
 func ParseJsonlFile(filename string) {
+	defer duration(track("Parsin File: " + filename))
 	fmt.Println("Parsin File: " + filename)
 
 	file, err := os.Open(filename)
@@ -120,24 +137,52 @@ func ParseJsonlFile(filename string) {
 	}
 	defer file.Close()
 
-	var emp employee
-	var data mytype
+	type dataentry map[string]interface{}
+	var data dataentry
 
 	scanner := bufio.NewScanner(file)
 	// optionally, resize scanner's capacity for lines over 64K, see next example
 	for scanner.Scan() {
 		content := scanner.Bytes()
 		err = json.Unmarshal(content, &data)
+		layout := "2020-10-30T12:24:10+0700"
+		datetext := data["date"].(string)
+		fmt.Println(datetext)
+		t, err := time.Parse(layout, datetext)
+		fmt.Println(data["data"], t)
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Println(data)
+		fmt.Println(data["date"].(string))
 
-		fmt.Printf("emp Struct: %#v\n", emp)
 	}
 
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
 
+}
+
+func track(msg string) (string, time.Time) {
+	return msg, time.Now()
+}
+
+func duration(msg string, start time.Time) {
+	log.Printf("%v: %v\n", msg, time.Since(start))
+}
+
+// PrintMemUsage outputs the current, total and OS memory being used. As well as the number
+// of garage collection cycles completed.
+func PrintMemUsage() {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	// For info on each, see: https://golang.org/pkg/runtime/#MemStats
+	fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
+	fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+	fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
+	fmt.Printf("\tNumGC = %v\n", m.NumGC)
+}
+
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }
